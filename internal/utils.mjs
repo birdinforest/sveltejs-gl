@@ -46,3 +46,55 @@ export function memoize(fn) {
 		return cache.get(hash);
 	};
 }
+
+export function base64ToBinary(input, charStart) {
+	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+	const lookup = new Uint8Array(130);
+	for (let i = 0; i < chars.length; i++) {
+		lookup[chars.charCodeAt(i)] = i;
+	}
+	// Ignore
+	let len = input.length - charStart;
+	if (input.charAt(len - 1) === '=') { len--; }
+	if (input.charAt(len - 1) === '=') { len--; }
+
+	const uarray = new Uint8Array((len / 4) * 3);
+
+	for (let i = 0, j = charStart; i < uarray.length;) {
+		const c1 = lookup[input.charCodeAt(j++)];
+		const c2 = lookup[input.charCodeAt(j++)];
+		const c3 = lookup[input.charCodeAt(j++)];
+		const c4 = lookup[input.charCodeAt(j++)];
+
+		uarray[i++] = (c1 << 2) | (c2 >> 4);
+		uarray[i++] = ((c2 & 15) << 4) | (c3 >> 2);
+		uarray[i++] = ((c3 & 3) << 6) | c4;
+	}
+
+	return uarray.buffer;
+}
+
+/**
+ * Relative path to absolute path
+ * @param  {string} path
+ * @param  {string} basePath
+ * @return {string}
+ * @memberOf clay.core.util
+ */
+export function relative2absolute (path, basePath) {
+	if (!basePath || path.match(/^\//)) {
+		return path;
+	}
+	const pathParts = path.split('/');
+	const basePathParts = basePath.split('/');
+
+	let item = pathParts[0];
+	while(item === '.' || item === '..') {
+		if (item === '..') {
+			basePathParts.pop();
+		}
+		pathParts.shift();
+		item = pathParts[0];
+	}
+	return basePathParts.join('/') + '/' + pathParts.join('/');
+}

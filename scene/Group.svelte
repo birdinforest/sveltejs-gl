@@ -10,6 +10,7 @@
 	export let rotation = [0, 0, 0]; // TODO make it possible to set a quaternion as a prop?
 	export let scale = 1;
 
+
 	const scene = get_scene();
 	const parent = get_parent();
 
@@ -24,7 +25,7 @@
 
 	$: target = lookAt ? scene.get_target(lookAt) : writable(null);
 
-	$: if ($target) {
+  $: if ($target) {
 		mat4.translate(matrix, $parent_ctm, location);
 		mat4.targetTo(matrix, world_position, $target, up);
 		mat4.scale(matrix, matrix, scale_array);
@@ -33,7 +34,7 @@
 	} else {
 		quaternion = quat.fromEuler(quaternion || quat.create(), ...rotation);
 		matrix = mat4.fromRotationTranslationScale(matrix, quaternion, location, scale_array);
-		$ctm = mat4.multiply($ctm || mat4.create(), $parent_ctm, matrix);
+    $ctm = mat4.multiply($ctm || mat4.create(), $parent_ctm, matrix);
 	}
 
 	// $: quaternion = quat.fromEuler(quaternion || quat.create(), ...rotation);

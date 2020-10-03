@@ -6,6 +6,7 @@ export { default as Mesh } from './scene/Mesh/index.svelte';
 export { default as Overlay } from './scene/Overlay.svelte';
 export { default as Point } from './scene/Point.svelte';
 export { default as Target } from './scene/Target.svelte';
+export { default as Model } from './scene/Model.svelte';
 
 // lights
 export { default as AmbientLight } from './scene/lights/AmbientLight.svelte';
@@ -27,6 +28,9 @@ export { default as dodecahedron } from './geometry/dodecahedron.mjs';
 export { default as plane } from './geometry/plane.mjs';
 export { default as icosphere } from './geometry/icosphere.mjs';
 export { default as sphere } from './geometry/sphere.mjs';
+
+// loader
+export { default as GLTFLoader } from './loader/GLTFLoader.mjs';
 
 // textures
 export { default as Texture } from './abstract/Texture.mjs';

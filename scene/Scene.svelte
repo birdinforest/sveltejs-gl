@@ -183,6 +183,8 @@
 	});
 
 	onMount(() => {
+		window.scene = scene;
+		window.root_layer = root_layer;
 		scene.canvas = canvas;
 		gl = scene.gl = canvas.getContext('webgl');
 		visible = get_visibility(canvas);
