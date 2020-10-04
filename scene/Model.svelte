@@ -4,8 +4,7 @@
   import * as mat4 from 'gl-matrix/mat4';
   import * as quat from 'gl-matrix/quat';
 
-  import { Mesh } from '../index.mjs';
-  import { GLTFLoader } from '../index.mjs';
+  import Mesh from './Mesh/index.svelte';
   import {onMount} from "svelte";
 
   export let location = [0, 0, 0];
@@ -15,6 +14,8 @@
   export let scale = 1;
 
   export let url = null;
+  export let loader;
+  export let loaderOptions = null;
 
   const scene = get_scene();
   const parent = get_parent();
@@ -52,10 +53,17 @@
 
   onMount(() => {
     console.log('Model on mount.');
-    if(url != null) {
-      const loader = new GLTFLoader()
-      loader.loadModel(url);
+    console.log(url, loader);
+
+    if(!url) {
+      // TODO: exception?
     }
+
+    if(!loader || !loader.loadModel) {
+      // TODO: exception?
+    }
+
+    loader.loadModel(url);
   });
 </script>
 
