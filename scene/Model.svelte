@@ -13,9 +13,9 @@
   export let rotation = [0, 0, 0]; // TODO make it possible to set a quaternion as a prop?
   export let scale = 1;
 
-  export let url = null;
+  export let url;
   export let loader;
-  export let loaderOptions = null;
+  export let loaderOptions;
 
   const scene = get_scene();
   const parent = get_parent();
@@ -50,7 +50,6 @@
 
   set_parent({ ctm });
 
-
   onMount(() => {
     console.log('Model on mount.');
     console.log(url, loader);
@@ -63,7 +62,11 @@
       // TODO: exception?
     }
 
-    loader.loadModel(url);
+    const loading = loader.loadModel(url, loaderOptions);
+    console.log('Model#onMount: loading:', loading);
+    loading.then(result => {
+      console.log('Model#onMount: loadModel', result);
+    })
   });
 </script>
 

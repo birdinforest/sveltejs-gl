@@ -97,10 +97,12 @@ export default class GLTFLoader {
 
   /**
    * Load model.
-   * @param {string | null | undefined} url
+   * @param {string} url
+   * @param {object | undefined} opts
    * @returns {Promise<void>}
    */
-  async loadModel(url) {
+  async loadModel(url, opts) {
+    // TODO: Implement opts
 
     if(!url || url == '') {
       throw new Error('GLTFLoader.loadModel: Given url is undefined or empty.');
@@ -166,101 +168,107 @@ export default class GLTFLoader {
     lib.gltfInfo = gltfInfo;
 
     let loading = 0;
-    function checkLoad() {
-      loading--;
-      if (loading === 0) {
-        return afterLoadBuffer();
-      }
-    }
 
-    // If already load buffers
-    if (buffers) {
-      lib.buffers = buffers.slice();
-      return afterLoadBuffer();
-    }
-    else {
-      // Load buffers
-      gltfInfo.buffers.forEach((bufferInfo, idx) => {
-        loading++;
-        const path = bufferInfo.uri;
+    return new Promise((resolve, reject) => {
 
-        self._loadBuffers(
-          path,
-          (buffer) => {
-            lib.buffers[idx] = buffer;
-            checkLoad();
-          },
-          (error) => {
-            throw new Error(
-              `GLTFLoader.parseGLTF: Can not load buffer by given uri.\nError ${error}.\nurl: ${path}`);
-            checkLoad()
-          });
-      });
-    }
-
-    /**
-     * Parse meshes, textures, and return gltf lib after buffer loading.
-     * @returns {Promise<object>}
-     */
-    function afterLoadBuffer() {
-      return new Promise((resolve, reject) => {
-        // Buffer not load complete.
-        if(lib.buffers.length !== gltfInfo.buffers.length) {
-          setTimeout(function() {
-            reject('GLTFLoader._parseGLTF: Can not load all buffers.');
-          });
+      function checkLoad() {
+        loading--;
+        if(loading === 0) {
+          console.log('GLTFLoader. return afterLoadBuffer by checkLoad()');
+          return afterLoadBuffer(resolve, reject);
         }
+      }
 
-        gltfInfo.bufferViews.forEach((bufferViewInfo, idx) => {
-          // PENDING Performance
-          lib.bufferViews[idx] = lib.buffers[bufferViewInfo.buffer]
-            .slice(bufferViewInfo.byteOffset || 0, (bufferViewInfo.byteOffset || 0) + (bufferViewInfo.byteLength || 0));
+      // If already load buffers
+      if(buffers) {
+        lib.buffers = buffers.slice();
+
+        console.log('GLTFLoader. return afterLoadBuffer if had loaded buffers');
+        return afterLoadBuffer(resolve, reject);
+      } else {
+        // Load buffers
+        gltfInfo.buffers.forEach((bufferInfo, idx) => {
+          loading++;
+          const path = bufferInfo.uri;
+
+          self._loadBuffers(
+            path,
+            (buffer) => {
+              lib.buffers[idx] = buffer;
+              checkLoad();
+            },
+            (error) => {
+              throw new Error(
+                `GLTFLoader.parseGLTF: Can not load buffer by given uri.\nError ${error}.\nurl: ${path}`);
+              checkLoad()
+            });
         });
-        lib.buffers = null;
+      }
 
-        const parseMeshesPendings = self._parseMeshes(gltfInfo, lib);
+      /**
+       * Parse meshes, textures, and return gltf lib after buffer loading.
+       * @returns {Promise<object>}
+       */
+      function afterLoadBuffer(resolve, reject) {
+          // Buffer not load complete.
+          if(lib.buffers.length !== gltfInfo.buffers.length) {
+            setTimeout(function() {
+              console.log('GLTFLoader#afterLoadBuffer. reject.');
+              reject('GLTFLoader._parseGLTF: Can not load all buffers.');
+            });
+          }
 
-        const pendingArray = [parseMeshesPendings];
+          gltfInfo.bufferViews.forEach((bufferViewInfo, idx) => {
+            // PENDING Performance
+            lib.bufferViews[idx] = lib.buffers[bufferViewInfo.buffer]
+              .slice(bufferViewInfo.byteOffset || 0, (bufferViewInfo.byteOffset || 0) + (bufferViewInfo.byteLength || 0));
+          });
+          lib.buffers = null;
 
-        // var flattenPendings = pendingArray.flat();  // Depth 1 flatten.
+          const parseMeshesPendings = self._parseMeshes(gltfInfo, lib);
 
-        // // Waiting for all promises have been done.
-        // pending.then(function() {
-        //   self._parseNodes(json, lib);
-        //
-        //   // Only support one scene.
-        //   if (json.scenes) {
-        //     var sceneInfo = json.scenes[json.scene || 0]; // Default use the first scene.
-        //     if (sceneInfo) {
-        //       for (var i = 0; i < sceneInfo.nodes.length; i++) {
-        //         var node = lib.nodes[sceneInfo.nodes[i]];
-        //         node.update();
-        //         rootNode.add(node);
-        //       }
-        //     }
-        //   }
-        //
-        //   if (self.includeMesh) {
-        //     self._parseSkins(json, lib);
-        //   }
-        //
-        //   if (self.includeAnimation) {
-        //     self._parseAnimations(json, lib);
-        //   }
-        //   if (immediately) {
-        //     setTimeout(function () {
-        //       self.trigger('success', getResult());
-        //     });
-        //   } else {
-        //     self.trigger('success', getResult());
-        //   }
-        // });
+          let pendingArray = [parseMeshesPendings];
 
-        Promise.all(pendingArray).then(() => {
-          resolve(lib);
-        });
-      });
-    }
+          pendingArray = pendingArray.flat();  // Depth 1 flatten.
+
+          // // Waiting for all promises have been done.
+          // pending.then(function() {
+          //   self._parseNodes(json, lib);
+          //
+          //   // Only support one scene.
+          //   if (json.scenes) {
+          //     var sceneInfo = json.scenes[json.scene || 0]; // Default use the first scene.
+          //     if (sceneInfo) {
+          //       for (var i = 0; i < sceneInfo.nodes.length; i++) {
+          //         var node = lib.nodes[sceneInfo.nodes[i]];
+          //         node.update();
+          //         rootNode.add(node);
+          //       }
+          //     }
+          //   }
+          //
+          //   if (self.includeMesh) {
+          //     self._parseSkins(json, lib);
+          //   }
+          //
+          //   if (self.includeAnimation) {
+          //     self._parseAnimations(json, lib);
+          //   }
+          //   if (immediately) {
+          //     setTimeout(function () {
+          //       self.trigger('success', getResult());
+          //     });
+          //   } else {
+          //     self.trigger('success', getResult());
+          //   }
+          // });
+
+          Promise.all(pendingArray).then(() => {
+            console.log('GLTFLoader#afterLoadBuffer. lib: ', lib);
+            resolve(lib);
+          });
+      }
+    });
   }
 
   /**
@@ -272,7 +280,7 @@ export default class GLTFLoader {
    */
   _parseMeshes (gltfInfo, lib) {
 
-    console.log('lib:', lib, '\ntodo: parse meshes');
+    console.log('GLTFLoader#_parseMeshes: lib:', lib);
     const pendings = [];
 
     gltfInfo.meshes.forEach(function (meshInfo, idx) {
