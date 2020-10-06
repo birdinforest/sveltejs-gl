@@ -5,7 +5,10 @@
   import * as quat from 'gl-matrix/quat';
 
   import Mesh from './Mesh/index.svelte';
+  import Geometry from '../geometry/Geometry.mjs';
   import {onMount} from "svelte";
+
+  import box from '../geometry/box.mjs';
 
   export let location = [0, 0, 0];
   export let lookAt = undefined;
@@ -16,6 +19,8 @@
   export let url;
   export let loader;
   export let loaderOptions;
+
+  let lib;
 
   const scene = get_scene();
   const parent = get_parent();
@@ -65,9 +70,22 @@
     const loading = loader.loadModel(url, loaderOptions);
     console.log('Model#onMount: loading:', loading);
     loading.then(result => {
+      lib = result;
       console.log('Model#onMount: loadModel', result);
     })
   });
 </script>
 
-<slot></slot>
+{#if lib}
+  {#each lib.meshes as geometries}
+    {#each geometries as geometry}
+      <Mesh
+        geometry={geometry.geometry}
+        location={[0,0,0]}
+        rotation={[0,0,0]}
+        scale={[1,1,1]}
+        uniforms={{ color: 0x24681, alpha: 0.9 }}
+      />
+    {/each}
+  {/each}
+{/if}
