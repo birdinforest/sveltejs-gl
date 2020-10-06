@@ -123,12 +123,19 @@ export default class Geometry {
 }
 
 function get_count(attributes) {
-	let min = Infinity;
+	// let min = Infinity;
 
-	for (const k in attributes) {
-		const count = attributes[k].data.length / attributes[k].size;
-		if (count < min) min = count;
+	// for (const k in attributes) {
+	// 	const count = attributes[k].data.length / attributes[k].size;
+	// 	if (count < min) min = count;
+	// }
+	// FIXME: Vertex count should be positions.length / positions.size ?
+	// In most of cases, position is the main attribute, there is no normal or uv data.
+  if(attributes.position && attributes.position.data) {
+  	return attributes.position.length / attributes.position.size;
+	} else {
+    return 0;
 	}
 
-	return min;
+	// return min;
 }
