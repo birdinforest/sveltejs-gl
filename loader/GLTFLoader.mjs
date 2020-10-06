@@ -396,15 +396,16 @@ export default class GLTFLoader {
               || 0;
 
             // Parse indices
-            // To use Uint16Array if vertex count less than 0xffff.
+            // TODO: use Uint16Array if vertex count less than 0xffff.
             if(primitiveInfo.indices != null) {
               geometry.indices = this._getAccessorData(gltfInfo, lib, primitiveInfo.indices, true);
-              if(vertexCount <= 0xffff && geometry.indices instanceof Uint32Array) {
-                geometry.indices = new Uint16Array(geometry.indices);
-              }
-              if(geometry.indices instanceof Uint8Array) {
-                geometry.indices = new Uint16Array(geometry.indices);
-              }
+              geometry.indices = new Uint32Array(geometry.indices);
+              // if(vertexCount <= 0xffff && geometry.indices instanceof Uint32Array) {
+              //   geometry.indices = new Uint16Array(geometry.indices);
+              // }
+              // if(geometry.indices instanceof Uint8Array) {
+              //   geometry.indices = new Uint16Array(geometry.indices);
+              // }
             }
 
             // // FIXME: Material support
@@ -434,7 +435,7 @@ export default class GLTFLoader {
                   size: geometry.attributes.uv.size,
                 }
               }, {
-                index: geometry.index,
+                index: geometry.indices,
               }),
               material: null,
               mode: [constants.POINTS, constants.LINES, constants.LINE_LOOP, constants.LINE_STRIP, constants.TRIANGLES, constants.TRIANGLE_STRIP, constants.TRIANGLE_FAN][primitiveInfo.mode] || constants.TRIANGLES,
