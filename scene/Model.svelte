@@ -77,10 +77,10 @@
 </script>
 
 {#if lib}
-  {#each lib.meshes as geometries}
-    {#each geometries as geometry}
+  {#each lib.meshes as primitives}
+    {#each primitives as primitive}
       <Mesh
-        geometry={geometry.geometry}
+        geometry={primitive.geometry}
         location={[0,0,0]}
         rotation={[0,0,0]}
         scale={[1,1,1]}

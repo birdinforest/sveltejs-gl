@@ -2,22 +2,32 @@
 
 /**
  * @typedef GLTFLoaderLib
- * @property {string} url                   - Url of .gltf file.
- * @property {GLTFInfo} gltfInfo
- * @property {ArrayBuffer[]} buffers
- * @property {ArrayBuffer[]} bufferViews    - Array buffer clips indices basis on buffer view index in glTF#json#BufferViews
- * @property {[]} materials
- * @property {[]} textures
- * @property {[][]} meshes
- * @property {[]} joints
- * @property {[]} skeletons
- * @property {[]} cameras
- * @property {[]} nodes
- * @property {object[]} clips
+ * @property {string}         url             - Url of .gltf file.
+ * @property {GLTFInfo}       gltfInfo
+ * @property {ArrayBuffer[]}  buffers
+ * @property {ArrayBuffer[]}  bufferViews     - Array buffer clips indices basis on buffer view index in glTF#json#BufferViews
+ * @property {[]}             materials
+ * @property {[]}             textures
+ * @property {[][]}           meshes
+ * @property {[]}             joints
+ * @property {[]}             skeletons
+ * @property {[]}             cameras
+ * @property {[]}             nodes
+ * @property {object[]}       clips
+ */
+
+/**
+ * @typedef GLTFLoaderMesh
+ * @property {string}           name
+ * @property {SvelteGeometry}   geometry
+ * @property {Object}           material
+ * @property {boolean}          culling
+ * @property {number}           mode
  */
 
 import { base64ToBinary, relative2absolute, generateVertexNormals, generateTangents } from '../internal/utils.mjs';
-import Geometry from '../geometry/Geometry.mjs';
+import { vec3, mat4, quat } from 'gl-matrix';
+import SvelteGeometry from '../geometry/Geometry.mjs';
 import * as constants from '../internal/constants.mjs';
 
 const GLTF_EXTENSIONS = {
@@ -75,6 +85,22 @@ const SIZE_MAP = {
   MAT4: 16
 };
 
+class Node {
+  constructor(name) {
+    this.position = vec3.create();
+    this.rotation = quat.create();
+    this.scale = vec3.fromValues(1,1,1);
+    this.localTransform = mat4.create();
+    this.worldTransform = mat4.create();
+    this.name = name;
+    this._children = [];
+  }
+
+  add(obj) {
+    this._children.push(obj);
+  }
+}
+
 /**
  * GLTF Loader.
  * @Reference: https://github.com/pissang/claygl/blob/master/src/loader/GLTF.js
@@ -86,13 +112,17 @@ export default class GLTFLoader {
    * @param {string} opt.bufferRootPath   - The root path of buffer.
    * @param {string} opt.textureRootPath  - The root path of texture.
    * @param {string} opt.includeTexture   - If load texture.
+   * @param {string} opt.includeCamera    - If load camera.
+   * @param {string} opt.includeAnimation - If load animation.
    */
   constructor(opt = undefined) {
     opt = opt || {};
     this.rootPath = opt.rootPath;
     this.bufferRootPath = opt.bufferRootPath;
     this.textureRootPath = opt.textureRootPath;
-    this.includeTexture = opt.includeTexture;
+    this.includeTexture = opt.includeTexture || true;
+    this.includeCamera = opt.includeCamera || false;
+    this.includeAnimation = opt.includeAnimation || true;
   }
 
   /**
@@ -209,64 +239,64 @@ export default class GLTFLoader {
        * Parse meshes, textures, and return gltf lib after buffer loading.
        * @returns {Promise<object>}
        */
-      function afterLoadBuffer(resolve, reject) {
-          // Buffer not load complete.
-          if(lib.buffers.length !== gltfInfo.buffers.length) {
-            setTimeout(function() {
-              console.log('GLTFLoader#afterLoadBuffer. reject.');
-              reject('GLTFLoader._parseGLTF: Can not load all buffers.');
-            });
-          }
-
-          gltfInfo.bufferViews.forEach((bufferViewInfo, idx) => {
-            // PENDING Performance
-            lib.bufferViews[idx] = lib.buffers[bufferViewInfo.buffer]
-              .slice(bufferViewInfo.byteOffset || 0, (bufferViewInfo.byteOffset || 0) + (bufferViewInfo.byteLength || 0));
+      async function afterLoadBuffer(resolve, reject) {
+        // Buffer not load complete.
+        if(lib.buffers.length !== gltfInfo.buffers.length) {
+          setTimeout(function() {
+            console.log('GLTFLoader#afterLoadBuffer. reject.');
+            reject('GLTFLoader._parseGLTF: Can not load all buffers.');
           });
-          lib.buffers = null;
+        }
 
-          const parseMeshesPendings = self._parseMeshes(gltfInfo, lib);
+        gltfInfo.bufferViews.forEach((bufferViewInfo, idx) => {
+          // PENDING Performance
+          lib.bufferViews[idx] = lib.buffers[bufferViewInfo.buffer]
+            .slice(bufferViewInfo.byteOffset || 0, (bufferViewInfo.byteOffset || 0) + (bufferViewInfo.byteLength || 0));
+        });
+        lib.buffers = null;
 
-          let pendingArray = [parseMeshesPendings];
+        const parseMeshesPendings = self._parseMeshes(gltfInfo, lib);
 
-          pendingArray = pendingArray.flat();  // Depth 1 flatten.
+        // TODO: Parse texture.
 
-          // // Waiting for all promises have been done.
-          // pending.then(function() {
-          //   self._parseNodes(json, lib);
-          //
-          //   // Only support one scene.
-          //   if (json.scenes) {
-          //     var sceneInfo = json.scenes[json.scene || 0]; // Default use the first scene.
-          //     if (sceneInfo) {
-          //       for (var i = 0; i < sceneInfo.nodes.length; i++) {
-          //         var node = lib.nodes[sceneInfo.nodes[i]];
-          //         node.update();
-          //         rootNode.add(node);
-          //       }
-          //     }
-          //   }
-          //
-          //   if (self.includeMesh) {
-          //     self._parseSkins(json, lib);
-          //   }
-          //
-          //   if (self.includeAnimation) {
-          //     self._parseAnimations(json, lib);
-          //   }
-          //   if (immediately) {
-          //     setTimeout(function () {
-          //       self.trigger('success', getResult());
-          //     });
-          //   } else {
-          //     self.trigger('success', getResult());
-          //   }
-          // });
+        let pendingArray = [parseMeshesPendings];
 
-          Promise.all(pendingArray).then(() => {
-            console.log('GLTFLoader#afterLoadBuffer. lib: ', lib);
-            resolve(lib);
-          });
+        pendingArray = pendingArray.flat();  // Depth 1 flatten.
+
+        await Promise.all(pendingArray);
+
+        console.log('GLTFLoader#afterLoadBuffer. lib: ', lib);
+
+        self._parseNodes(gltfInfo, lib);
+
+        //   // Only support one scene.
+        //   if (json.scenes) {
+        //     var sceneInfo = json.scenes[json.scene || 0]; // Default use the first scene.
+        //     if (sceneInfo) {
+        //       for (var i = 0; i < sceneInfo.nodes.length; i++) {
+        //         var node = lib.nodes[sceneInfo.nodes[i]];
+        //         node.update();
+        //         rootNode.add(node);
+        //       }
+        //     }
+        //   }
+        //
+        //   if (self.includeMesh) {
+        //     self._parseSkins(json, lib);
+        //   }
+        //
+        //   if (self.includeAnimation) {
+        //     self._parseAnimations(json, lib);
+        //   }
+        //   if (immediately) {
+        //     setTimeout(function () {
+        //       self.trigger('success', getResult());
+        //     });
+        //   } else {
+        //     self.trigger('success', getResult());
+        //   }
+
+        resolve(lib);
       }
     });
   }
@@ -275,201 +305,205 @@ export default class GLTFLoader {
    * Parse all meshes and create geometries.
    * @param {GLTFInfo} gltfInfo
    * @param {GLTFLoaderLib} lib
-   * @returns {Promise<void>[]}
+   * @returns {Promise<void>}
    * @private
    */
   _parseMeshes (gltfInfo, lib) {
 
-    console.log('GLTFLoader#_parseMeshes: lib:', lib);
-    const pendings = [];
+    // return new Promise((resolve, reject) => {
+      console.log('GLTFLoader#_parseMeshes: lib:', lib);
+      const pendings = [];
 
-    gltfInfo.meshes.forEach(function (meshInfo, idx) {
-      lib.meshes[idx] = [];
+      gltfInfo.meshes.forEach(function (meshInfo, idx) {
+        lib.meshes[idx] = [];
 
-      // Geometry
-      for (let pp = 0; pp < meshInfo.primitives.length; pp++) {
+        // Geometry
+        for (let pp = 0; pp < meshInfo.primitives.length; pp++) {
 
-        const promise = new Promise((resolve, reject) => {
+          const promise = new Promise((resolve, reject) => {
 
-          const primitiveIndex = pp;
-          /** @type {MeshPrimitiveInfo} */
-          const primitiveInfo = meshInfo.primitives[pp];
+            const primitiveIndex = pp;
+            /** @type {MeshPrimitiveInfo} */
+            const primitiveInfo = meshInfo.primitives[pp];
 
-          const geometry = {
-            attributes: {
-              position: {
-                data: null,
-                size: 3
-              },
-              normal: {
-                data: null,
-                size: 3
-              },
-              uv: {
-                data: null,
-                size: 2
-              }
-            },
-            index: null
-          }
-
-          // Don't support draco compression.
-          const dracoInfo = primitiveInfo.extensions && primitiveInfo.extensions[GLTF_EXTENSIONS.KHR_DRACO_MESH_COMPRESSION];
-          if(dracoInfo) {
-            reject(`GLTFLoader._parseMeshes: Don not support DRACO. Mesh: ${idx}, primitive ${primitiveIndex}`);
-          } else {
-            // Parse attributes
-            const semantics = Object.keys(primitiveInfo.attributes);
-            for(let ss = 0; ss < semantics.length; ss++) {
-              const semantic = semantics[ss];
-              const accessorIdx = primitiveInfo.attributes[semantic];
-              const attributeInfo = gltfInfo.accessors[accessorIdx];
-              const attributeName = semanticAttributeMap[semantic];
-              if(!attributeName) {
-                continue;
-              }
-              const size = SIZE_MAP[attributeInfo.type];
-
-              let attributeArray = this._getAccessorData(gltfInfo, lib, accessorIdx);
-              // WebGL attribute buffer not support uint32.
-              // Direct use Float32Array may also have issue.
-              if(attributeArray instanceof Uint32Array) {
-                attributeArray = new Float32Array(attributeArray);
-              }
-              if(semantic === 'WEIGHTS_0' && size === 4) {
-                // Weight data in QTEK has only 3 component, the last component can be evaluated since it is normalized
-                const weightArray = new attributeArray.constructor(attributeInfo.count * 3);
-                for(let i = 0; i < attributeInfo.count; i++) {
-                  const i4 = i * 4, i3 = i * 3;
-                  const w1 = attributeArray[i4], w2 = attributeArray[i4 + 1], w3 = attributeArray[i4 + 2],
-                    w4 = attributeArray[i4 + 3];
-                  const wSum = w1 + w2 + w3 + w4;
-                  weightArray[i3] = w1 / wSum;
-                  weightArray[i3 + 1] = w2 / wSum;
-                  weightArray[i3 + 2] = w3 / wSum;
-                }
-                geometry.attributes[attributeName].data = weightArray;
-              } else if(semantic === 'COLOR_0' && size === 3) {
-                const colorArray = new attributeArray.constructor(attributeInfo.count * 4);
-                for(let i = 0; i < attributeInfo.count; i++) {
-                  const i4 = i * 4, i3 = i * 3;
-                  colorArray[i4] = attributeArray[i3];
-                  colorArray[i4 + 1] = attributeArray[i3 + 1];
-                  colorArray[i4 + 2] = attributeArray[i3 + 2];
-                  colorArray[i4 + 3] = 1;
-                }
-                geometry.attributes[attributeName].data = colorArray;
-              } else {
-                geometry.attributes[attributeName].data = attributeArray;
-              }
-
-              let attributeType = 'float';
-              if(attributeArray instanceof Uint16Array) {
-                attributeType = 'ushort';
-              } else if(attributeArray instanceof Int16Array) {
-                attributeType = 'short';
-              } else if(attributeArray instanceof Uint8Array) {
-                attributeType = 'ubyte';
-              } else if(attributeArray instanceof Int8Array) {
-                attributeType = 'byte';
-              }
-              geometry.attributes[attributeName].type = attributeType;
-
-              geometry.attributes[attributeName].size = size;
-
-              if(semantic === 'POSITION') {
-                // TODO: Bounding Box
-                geometry.boundingBox = {};
-                const min = attributeInfo.min;
-                const max = attributeInfo.max;
-                if(min) {
-                  geometry.boundingBox.min = min;
-                }
-                if(max) {
-                  geometry.boundingBox.max = max;
-                }
-              }
-            }
-
-            const vertexCount = geometry.attributes.position
-              && (geometry.attributes.position.data.length / geometry.attributes.position.size)
-              || 0;
-
-            // Parse indices
-            // TODO: use Uint16Array if vertex count less than 0xffff.
-            if(primitiveInfo.indices != null) {
-              geometry.indices = this._getAccessorData(gltfInfo, lib, primitiveInfo.indices, true);
-              geometry.indices = new Uint32Array(geometry.indices);
-              // if(vertexCount <= 0xffff && geometry.indices instanceof Uint32Array) {
-              //   geometry.indices = new Uint16Array(geometry.indices);
-              // }
-              // if(geometry.indices instanceof Uint8Array) {
-              //   geometry.indices = new Uint16Array(geometry.indices);
-              // }
-            }
-
-            // // FIXME: Material support
-            // let material = lib.materials[primitiveInfo.material];
-            // let materialInfo = (gltfInfo.materials || [])[primitiveInfo.material];
-            // // Use default material
-            // if (!material) {
-            //   material = new Material({
-            //     shader: self._getShader()
-            //   });
-            // }
-
-            // FIXME: Not sure if we need a interface/class for mesh.
-            // FIXME: Update `geometry.primitive`?
-            const primitive = {
-              geometry: new Geometry({
+            const geometry = {
+              attributes: {
                 position: {
-                  data: geometry.attributes.position.data,
-                  size: geometry.attributes.position.size,
+                  data: null,
+                  size: 3
                 },
                 normal: {
-                  data: geometry.attributes.normal.data,
-                  size: geometry.attributes.normal.size,
+                  data: null,
+                  size: 3
                 },
                 uv: {
-                  data: geometry.attributes.uv.data,
-                  size: geometry.attributes.uv.size,
+                  data: null,
+                  size: 2
                 }
-              }, {
-                index: geometry.indices,
-              }),
-              material: null,
-              mode: [constants.POINTS, constants.LINES, constants.LINE_LOOP, constants.LINE_STRIP, constants.TRIANGLES, constants.TRIANGLE_STRIP, constants.TRIANGLE_FAN][primitiveInfo.mode] || constants.TRIANGLES,
-              // ignoreGBuffer: material.transparent
+              },
+              index: null
             }
 
-            // if (materialInfo != null) {
-            //   primitive.culling = !materialInfo.doubleSided;
-            // }
+            // Don't support draco compression.
+            const dracoInfo = primitiveInfo.extensions && primitiveInfo.extensions[GLTF_EXTENSIONS.KHR_DRACO_MESH_COMPRESSION];
+            if(dracoInfo) {
+              reject(`GLTFLoader._parseMeshes: Don not support DRACO. Mesh: ${idx}, primitive ${primitiveIndex}`);
+            } else {
+              // Parse attributes
+              const semantics = Object.keys(primitiveInfo.attributes);
+              for(let ss = 0; ss < semantics.length; ss++) {
+                const semantic = semantics[ss];
+                const accessorIdx = primitiveInfo.attributes[semantic];
+                const attributeInfo = gltfInfo.accessors[accessorIdx];
+                const attributeName = semanticAttributeMap[semantic];
+                if(!attributeName) {
+                  continue;
+                }
+                const size = SIZE_MAP[attributeInfo.type];
 
-            if(!primitive.geometry.attributes.normal.data) {
-              generateVertexNormals(primitive.geometry);
+                let attributeArray = this._getAccessorData(gltfInfo, lib, accessorIdx);
+                // WebGL attribute buffer not support uint32.
+                // Direct use Float32Array may also have issue.
+                if(attributeArray instanceof Uint32Array) {
+                  attributeArray = new Float32Array(attributeArray);
+                }
+                if(semantic === 'WEIGHTS_0' && size === 4) {
+                  // Weight data in QTEK has only 3 component, the last component can be evaluated since it is normalized
+                  const weightArray = new attributeArray.constructor(attributeInfo.count * 3);
+                  for(let i = 0; i < attributeInfo.count; i++) {
+                    const i4 = i * 4, i3 = i * 3;
+                    const w1 = attributeArray[i4], w2 = attributeArray[i4 + 1], w3 = attributeArray[i4 + 2],
+                      w4 = attributeArray[i4 + 3];
+                    const wSum = w1 + w2 + w3 + w4;
+                    weightArray[i3] = w1 / wSum;
+                    weightArray[i3 + 1] = w2 / wSum;
+                    weightArray[i3 + 2] = w3 / wSum;
+                  }
+                  geometry.attributes[attributeName].data = weightArray;
+                } else if(semantic === 'COLOR_0' && size === 3) {
+                  const colorArray = new attributeArray.constructor(attributeInfo.count * 4);
+                  for(let i = 0; i < attributeInfo.count; i++) {
+                    const i4 = i * 4, i3 = i * 3;
+                    colorArray[i4] = attributeArray[i3];
+                    colorArray[i4 + 1] = attributeArray[i3 + 1];
+                    colorArray[i4 + 2] = attributeArray[i3 + 2];
+                    colorArray[i4 + 3] = 1;
+                  }
+                  geometry.attributes[attributeName].data = colorArray;
+                } else {
+                  geometry.attributes[attributeName].data = attributeArray;
+                }
+
+                let attributeType = 'float';
+                if(attributeArray instanceof Uint16Array) {
+                  attributeType = 'ushort';
+                } else if(attributeArray instanceof Int16Array) {
+                  attributeType = 'short';
+                } else if(attributeArray instanceof Uint8Array) {
+                  attributeType = 'ubyte';
+                } else if(attributeArray instanceof Int8Array) {
+                  attributeType = 'byte';
+                }
+                geometry.attributes[attributeName].type = attributeType;
+
+                geometry.attributes[attributeName].size = size;
+
+                if(semantic === 'POSITION') {
+                  // TODO: Bounding Box
+                  geometry.boundingBox = {};
+                  const min = attributeInfo.min;
+                  const max = attributeInfo.max;
+                  if(min) {
+                    geometry.boundingBox.min = min;
+                  }
+                  if(max) {
+                    geometry.boundingBox.max = max;
+                  }
+                }
+              }
+
+              const vertexCount = geometry.attributes.position
+                && (geometry.attributes.position.data.length / geometry.attributes.position.size)
+                || 0;
+
+              // Parse indices
+              // TODO: use Uint16Array if vertex count less than 0xffff.
+              if(primitiveInfo.indices != null) {
+                geometry.indices = this._getAccessorData(gltfInfo, lib, primitiveInfo.indices, true);
+                geometry.indices = new Uint32Array(geometry.indices);
+                // if(vertexCount <= 0xffff && geometry.indices instanceof Uint32Array) {
+                //   geometry.indices = new Uint16Array(geometry.indices);
+                // }
+                // if(geometry.indices instanceof Uint8Array) {
+                //   geometry.indices = new Uint16Array(geometry.indices);
+                // }
+              }
+
+              // // FIXME: Material support
+              // let material = lib.materials[primitiveInfo.material];
+              // let materialInfo = (gltfInfo.materials || [])[primitiveInfo.material];
+              // // Use default material
+              // if (!material) {
+              //   material = new Material({
+              //     shader: self._getShader()
+              //   });
+              // }
+
+              // FIXME: Not sure if we need a interface/class for mesh.
+              // FIXME: Update `geometry.primitive`?
+              const primitive = {
+                geometry: new SvelteGeometry({
+                  position: {
+                    data: geometry.attributes.position.data,
+                    size: geometry.attributes.position.size,
+                  },
+                  normal: {
+                    data: geometry.attributes.normal.data,
+                    size: geometry.attributes.normal.size,
+                  },
+                  uv: {
+                    data: geometry.attributes.uv.data,
+                    size: geometry.attributes.uv.size,
+                  }
+                }, {
+                  index: geometry.indices,
+                }),
+                material: null,
+                mode: [constants.POINTS, constants.LINES, constants.LINE_LOOP, constants.LINE_STRIP, constants.TRIANGLES, constants.TRIANGLE_STRIP, constants.TRIANGLE_FAN][primitiveInfo.mode] || constants.TRIANGLES,
+                // ignoreGBuffer: material.transparent
+              }
+
+              // if (materialInfo != null) {
+              //   primitive.culling = !materialInfo.doubleSided;
+              // }
+
+              if(!primitive.geometry.attributes.normal.data) {
+                generateVertexNormals(primitive.geometry);
+              }
+              // if (((material instanceof StandardMaterial) && material.normalMap)
+              //   || (material.isTextureEnabled('normalMap'))
+              // ) {
+              //   if (!primitive.geometry.attributes.tangent && primitive.geometry.attributes.tangent.data) {
+              //     primitive.geometry.attributes.tangent = {};
+              //     generateVertexNormals(primitive.geometry);
+              //   }
+              // }
+              // if (mesh.geometry.attributes.color.data) {
+              //   primitive.material.define('VERTEX_COLOR');
+              // }
+
+              lib.meshes[idx].push(primitive);
+              resolve();
             }
-            // if (((material instanceof StandardMaterial) && material.normalMap)
-            //   || (material.isTextureEnabled('normalMap'))
-            // ) {
-            //   if (!primitive.geometry.attributes.tangent && primitive.geometry.attributes.tangent.data) {
-            //     primitive.geometry.attributes.tangent = {};
-            //     generateVertexNormals(primitive.geometry);
-            //   }
-            // }
-            // if (mesh.geometry.attributes.color.data) {
-            //   primitive.material.define('VERTEX_COLOR');
-            // }
+          });
+          pendings.push(promise);
+        }
+      }, this);
 
-            lib.meshes[idx].push(primitive);
-            resolve();
-          }
-        });
-        pendings.push(promise);
-      }
-    }, this);
+      return pendings;
 
-    return pendings;
+    //   Promise.all(pendings).then(() => resolve(lib));
+    // });
   }
 
   _loadBuffers (path, onsuccess, onerror) {
@@ -599,5 +633,85 @@ export default class GLTFLoader {
       arr = decodedArr;
     }
     return arr;
+  }
+
+  /**
+   * Create nodes tree.
+   * @param {GLTFInfo} gltfInfo
+   * @param {GLTFLoaderLib} lib
+   * @private
+   */
+  _parseNodes(gltfInfo, lib) {
+
+    /**
+     * Convert primitive to mesh.
+     * @param {Object} primitive
+     * @returns {GLTFLoaderMesh}
+     */
+    function instanceMesh(primitive) {
+      return {
+        name: primitive.name,
+        geometry: primitive.geometry,
+        material: primitive.material,
+        culling: primitive.culling || true,
+        mode: primitive.mode,
+      };
+    }
+
+    gltfInfo.nodes.forEach(function (nodeInfo, idx) {
+      let node;
+      if (nodeInfo.camera != null && this.includeCamera) {
+        // TODO
+      } else if (nodeInfo.mesh != null) {
+        const primitives = lib.meshes[nodeInfo.mesh];
+        if (primitives) {
+          // if (primitives.length === 1) {
+          //   // Replace the node with mesh directly
+          //   node = instanceMesh(primitives[0]);
+          //   node.name = nodeInfo.name;
+          // } else {
+            node = new Node(nodeInfo.name);
+            for (let j = 0; j < primitives.length; j++) {
+              const newMesh = instanceMesh(primitives[j]);
+              node.add(newMesh);
+            }
+          // }
+        }
+      } else {
+        node = new Node(nodeInfo.name);
+      }
+
+      if (nodeInfo.matrix) {
+        mat4.set(node.localTransform, ...nodeInfo.matrix);
+        mat4.getTranslation(node.position, node.localTransform);
+        mat4.getRotation(node.rotation, node.localTransform);
+        mat4.getScaling(node.scale, node.localTransform);
+      }
+      else {
+        if (nodeInfo.translation) {
+          vec3.set(node.position, ...nodeInfo.translation);
+        }
+        if (nodeInfo.rotation) {
+          quat.set(node.rotation, ...nodeInfo.rotation);
+        }
+        if (nodeInfo.scale) {
+          vec3.set(node.scale, ...nodeInfo.scale);
+        }
+      }
+
+      lib.nodes[idx] = node;
+    }, this);
+
+    // Build hierarchy
+    gltfInfo.nodes.forEach(function (nodeInfo, idx) {
+      const node = lib.nodes[idx];
+      if (nodeInfo.children) {
+        for (let i = 0; i < nodeInfo.children.length; i++) {
+          const childIdx = nodeInfo.children[i];
+          const child = lib.nodes[childIdx];
+          node.add(child);
+        }
+      }
+    });
   }
 }
