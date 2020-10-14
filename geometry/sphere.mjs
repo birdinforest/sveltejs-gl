@@ -9,6 +9,7 @@ function create_smooth_geometry(turns, bands) {
 	const num_faces_per_turn = 2 * (bands - 1);
 	const num_faces = num_faces_per_turn * turns;
 
+	// FIXME: Consider to use Uint16Array?
 	const position = new Float32Array(num_vertices * 3); // doubles as normal
 	const uv = new Float32Array(num_vertices * 2);
 	const index = new Uint32Array(num_faces * 3);
